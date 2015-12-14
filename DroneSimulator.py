@@ -40,6 +40,9 @@ MAP EXAMPLE:
 
 import json
 
+import math
+
+
 class DroneMemory:
     ROWS = 1
     COLS = 2
@@ -63,7 +66,7 @@ class DroneMemory:
         self.memory[self.DY]   = int(map['simulatedDrone']['position']['y'])
         self.memory[self.TX]   = int(map['map']['target']['x'])
         self.memory[self.TY]   = int(map['map']['target']['y'])
-        self.memory[self.NOBS] = len(map['map']['objects'])
+        self.memory[self.NOBS] = len([item for item in map['map']['objects'] if item['type'] == 'Obstacle'])
         # load the obstacles
         obstidx = self.NOBS + 1
         for object in map['map']['objects']:
@@ -85,6 +88,13 @@ class DroneSimulator:
         self.regA = 0
         self.regN = 0
         self.__status = ''
+        self.moves = 0
+        self.CPU = 0
+
+    def getscore(self, probnum):
+        if probnum > 6:
+            probnum *= 2
+        return probnum * 10000 / math.log((self.moves**2)*self.CPU)
 
     @property
     def status(self):
@@ -131,9 +141,10 @@ class DroneSimulator:
         return False
 
     def step(self):
+        self.moves += 1
         next = self.sim(self.asm[0])
         while next > -1:
-            if next == 75: # crude breakpoint method: change the number and ste a breakpoint to 'pass'
+            if next == 181: # crude breakpoint method: change the number and ste a breakpoint to 'pass'
                 pass
             next = self.sim(self.asm[next])
 
@@ -150,7 +161,8 @@ class DroneSimulator:
             self.done = False
 
     def sim(self, instr):
-        # self.tracepresim(instr)
+        self.CPU += 1
+        #self.tracepresim(instr)
         return getattr(self, "sim" + instr.name)(instr)
 
     def tracepresim(self, instr):
@@ -163,7 +175,10 @@ class DroneSimulator:
             dbgins = self.asm[i]
             if instr.lineno == i:
                 pointer = '>'
-            print pointer + str(dbgins.lineno) + ": " + dbgins.name + ' ' + str(dbgins.humanparam) + ':' + str(self.value(dbgins.param))
+            instrtext = pointer + str(dbgins.lineno) + ": " + \
+                  dbgins.name + ' ' + str(dbgins.humanparam) + ':' + \
+                  str(self.value(dbgins.param))
+            print '{0:40} {1}'.format(instrtext, str(dbgins.macro))
         pass
 
     def address(self, param):
