@@ -1,11 +1,8 @@
 class COMMENT:
-    param = ''
     def __init__(self, param):
         self.param = param
 
 class LABEL:
-    lineno = -1
-
     def __init__(self, label):
         assert isinstance(label, str)
         self.label = label
@@ -17,17 +14,12 @@ class MACRO:
 
 
 class SYM:
-    name = ''
-    value = ''
-
     def __init__(self, name, value):
         self.name = name
         self.value = value
 
 
 class START(MACRO):
-    startLabel = ''
-
     def __init__(self, start):
         self.startLabel = start
 
@@ -46,8 +38,6 @@ class START(MACRO):
         return "START"
 
 class CHANGE_START(MACRO):
-    startLabel = ''
-
     def __init__(self, start):
         self.startLabel = start
 
@@ -64,10 +54,6 @@ class CHANGE_START(MACRO):
 
 
 class IFLESS(MACRO):
-    a = ''
-    b = ''
-    jmp = ''
-
     def __init__(self, a, b, jmp):
         self.a = a
         self.b = b
@@ -87,8 +73,6 @@ class IFLESS(MACRO):
 
 
 class MOVE_HLT(MACRO):
-    direction = -1
-
     def __init__(self, direction):
         self.direction = direction
 
@@ -104,9 +88,6 @@ class MOVE_HLT(MACRO):
 
 
 class LET(MACRO):
-    left = ''
-    right = ''
-
     def __init__(self, left, right):
         self.left = str(left)
         self.right = str(right)
@@ -122,10 +103,6 @@ class LET(MACRO):
         return "LET: " + str(self.left) + " = " + str(self.right)
 
 class LETSUB(MACRO):
-    left = ''
-    a = ''
-    b = ''
-
     def __init__(self, left, a, b):
         self.left = str(left)
         self.a = str(a)
@@ -144,10 +121,6 @@ class LETSUB(MACRO):
 
 
 class LETADD(MACRO):
-    left = ''
-    a = ''
-    b = ''
-
     def __init__(self, left, a, b):
         self.left = str(left)
         self.a = str(a)
@@ -165,10 +138,31 @@ class LETADD(MACRO):
         return "LETADD: " + str(self.left) + " = " + str(self.a) + " + " + str(self.b)
 
 
-class INC(MACRO):
-    left = ''
-    a = ''
+class ABS(MACRO):
+    code = 0
 
+    def __init__(self, left, right):
+        self.left = left
+        self.right = right
+
+    def expand(self):
+        ABS.code += 1
+        label = "ABSEND-" + str(ABS.code)
+        return [
+            COMMENT("ABS " + self.right + " = ABS(" + str(self.left) + ")"),
+            LDA(self.right),
+            JGE(label),
+            LDA(0),
+            SUBA(self.right),
+            LABEL(label),
+            STA(self.left)
+        ]
+
+    def __str__(self):
+        return "ABS " + self.right + " = ABS(" + str(self.left) + ")"
+
+
+class INC(MACRO):
     def __init__(self, left, a):
         self.left = str(left)
         self.a = str(a)
@@ -186,9 +180,6 @@ class INC(MACRO):
 
 
 class LETPTR(MACRO):
-    left = ''
-    right = ''
-
     def __init__(self, left, right):
         self.left = str(left)
         self.right = str(right)
@@ -206,9 +197,6 @@ class LETPTR(MACRO):
 
 
 class GETPTR(MACRO):
-    left = ''
-    right = ''
-
     def __init__(self, left, right):
         self.left = str(left)
         self.right = str(right)
@@ -226,12 +214,6 @@ class GETPTR(MACRO):
 
 
 class Instruction:
-    param = ''
-    humanparam = ''
-    name = ''
-    lineno = -1
-    macro = None
-
     def __init__(self, name, param):
         self.param = str(param)
         self.humanparam = self.param
