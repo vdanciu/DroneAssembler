@@ -308,16 +308,19 @@ class DroneAssembler:
                     line.param = symbols[line.param]
 
     def __expandMacros(self):
+        self.program = self.__expandMacrosDeep(self.program)
+
+    def __expandMacrosDeep(self, sequence):
         expanded = []
-        for line in self.program:
+        for line in sequence:
             if isinstance(line, MACRO):
-                macroprog = line.expand()
+                macroprog = self.__expandMacrosDeep(line.expand())
                 for instr in macroprog:
                     instr.macro = line
                 expanded.extend(macroprog)
             else:
                 expanded.append(line)
-        self.program = expanded
+        return expanded
 
     def __resolveJumps(self):
         label = None
