@@ -48,14 +48,13 @@ class DroneMemory:
     TX = 5
     TY = 6
     NOBS = 7
-    mapfile = ''
-    memory = None
+
     def __init__(self, mapfile):
+        self.memory = [0] * 1000000
         self.mapfile = mapfile
         self.loadmap(mapfile)
 
     def loadmap(self, mapfile):
-        self.memory = [0] * 1000000
         map = json.load(open(mapfile, "r"))
 
         self.memory[self.ROWS] = int(map['map']['rows'])
@@ -79,15 +78,13 @@ class DroneMemory:
 
 
 class DroneSimulator:
-    asm = None
-    done = False
-    memory = None
-    regA = 0
-    regN = 0
-    __status = ''
-
     def __init__(self, asm):
         self.asm = asm
+        self.done = False
+        self.memory = None
+        self.regA = 0
+        self.regN = 0
+        self.__status = ''
 
     @property
     def status(self):
