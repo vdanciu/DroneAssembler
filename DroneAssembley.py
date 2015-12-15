@@ -71,6 +71,41 @@ class IFLESS(MACRO):
     def __str__(self):
         return "IFLESS: " + str(self.a) + " < " + str(self.b) + " else jump to " + str(self.jmp)
 
+class IFEQ(MACRO):
+    code = 0
+    def __init__(self, a, b, jmp):
+        self.a = a
+        self.b = b
+        self.jmp = jmp
+
+    def expand(self):
+        IFEQ.code += 1
+        LabelAGEB = "AGEB-" + str(IFEQ.code)
+        LabelEqual = "EQUAL-" + str(IFEQ.code)
+        return [
+            COMMENT(str(self)),
+            LDA(self.a),
+            SUBA(self.b),
+            JGE(LabelAGEB),
+
+            LDA("0"),
+            JGE(self.jmp),
+
+            LABEL(LabelAGEB),
+            LDA(self.b),
+            SUBA(self.a),
+            JGE(LabelEqual),
+
+            LDA("0"),
+            JGE(self.jmp),
+
+            LABEL(LabelEqual),
+            COMMENT("then:")
+        ]
+
+    def __str__(self):
+        return "if " + self.a + " = " + self.b + " (else jump to: " + self.jmp + ")"
+
 
 class MOVE_HLT(MACRO):
     def __init__(self, direction):
