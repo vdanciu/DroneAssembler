@@ -55,29 +55,81 @@ class DroneMemory:
     def __init__(self, mapfile):
         self.memory = [0] * 1000000
         self.mapfile = mapfile
+        self.cetateni = []
+        self.drone = []
+        self.cetidx = 0
+        self.map = []
         self.loadmap(mapfile)
 
     def loadmap(self, mapfile):
-        map = json.load(open(mapfile, "r"))
+        self.map = json.load(open(mapfile, "r"))
 
-        self.memory[self.ROWS] = int(map['map']['rows'])
-        self.memory[self.COLS] = int(map['map']['rows'])
-        self.memory[self.DX]   = int(map['simulatedDrone']['position']['x'])
-        self.memory[self.DY]   = int(map['simulatedDrone']['position']['y'])
-        self.memory[self.TX]   = int(map['map']['target']['x'])
-        self.memory[self.TY]   = int(map['map']['target']['y'])
-        self.memory[self.NOBS] = len([item for item in map['map']['objects'] if item['type'] == 'Obstacle'])
+        self.memory[self.ROWS] = int(self.map['map']['rows'])
+        self.memory[self.COLS] = int(self.map['map']['rows'])
+        self.memory[self.DX]   = int(self.map['simulatedDrone']['position']['x'])
+        self.memory[self.DY]   = int(self.map['simulatedDrone']['position']['y'])
+        self.memory[self.TX]   = int(self.map['map']['target']['x'])
+        self.memory[self.TY]   = int(self.map['map']['target']['y'])
+        self.memory[self.NOBS] = len([item for item in self.map['map']['objects'] if item['type'] == 'Obstacle'])
         # load the obstacles
-        obstidx = self.NOBS + 1
-        for object in map['map']['objects']:
+        idx = self.NOBS + 1
+        for object in self.map['map']['objects']:
             if object['type'] == 'Obstacle':
-                self.memory[obstidx] = int(object['position']['x'])
-                self.memory[obstidx + 1] = int(object['position']['y'])
-                obstidx += 2
+                self.memory[idx] = int(object['position']['x'])
+                self.memory[idx + 1] = int(object['position']['y'])
+                idx += 2
+        self.cetidx = idx
+        self.cetateni = [item for item in self.map['map']['objects'] if item['type'] == 'Cetatean']
+        self.drone = [item for item in self.map['map']['objects'] if item['type'] == 'Drone']
+
+        self.update_toti_dusmanii()
+
+
+    def update_toti_dusmanii(self):
+        idx = self.update_inamici(self.cetidx, self.cetateni)
+        idx = self.update_inamici(idx, self.drone)
+
+    def refresh(self):
+        for cetatean in self.cetateni:
+            x = cetatean['position']['x']
+            y = cetatean['position']['y']
+            moves = {
+                'RIGHT': {'x':  1, 'y':  0},
+                'DOWN':  {'x':  0, 'y':  1},
+                'LEFT':  {'x': -1, 'y':  0},
+                'UP':    {'x':  0, 'y': -1}
+            }
+            cetatean['position']['x'] += moves[cetatean['direction']]['x']
+            cetatean['position']['y'] += moves[cetatean['direction']]['y']
+            if cetatean['position']['x'] < 0 or \
+               cetatean['position']['y'] < 0 or \
+               cetatean['position']['x'] >= self.memory[self.COLS] or \
+               cetatean['position']['y'] >= self.memory[self.ROWS]:
+                self.cetateni = [item for item in self.cetateni if item != cetatean]
+
+        self.update_toti_dusmanii()
+
+
+    def update_inamici(self, idx, inamici):
+        self.memory[idx] = len(inamici)
+        idx += 1
+        for object in inamici:
+            self.memory[idx] = int(object['position']['x'])
+            self.memory[idx + 1] = int(object['position']['y'])
+            idx += 2
+        return idx
 
     @property
     def memory(self):
         return self.memory
+
+    def dumpMemoryMatrix(self, start, rows, cols):
+        for y in range(0, rows):
+            line = ''
+            for x in range(0, cols):
+                line += '{0:>3}'.format(str(self.memory[start + y * cols + x]))
+            print line
+
 
 
 class DroneSimulator:
@@ -140,11 +192,21 @@ class DroneSimulator:
                 return True
         return False
 
+    def checkCetateni(self):
+        cetaddress = DroneMemory.NOBS + self.memory[DroneMemory.NOBS] * 2 + 1
+        for i in range(0, self.memory[cetaddress]):
+            cetx = self.memory[cetaddress + 1 + 2 * i]
+            cety = self.memory[cetaddress + 1 + 2 * i + 1]
+            if abs(self.memory[DroneMemory.DX] - cetx) <= 3 and \
+               abs(self.memory[DroneMemory.DY] - cety) <= 3:
+                return True
+        return False
+
     def step(self):
         self.moves += 1
         next = self.sim(self.asm[0])
         while next > -1:
-            if next == 181: # crude breakpoint method: change the number and ste a breakpoint to 'pass'
+            if next == 390: # crude breakpoint method: change the number and ste a breakpoint to 'pass'
                 pass
             next = self.sim(self.asm[next])
 
@@ -157,6 +219,8 @@ class DroneSimulator:
             self.__status = 'Out of map bounds!'
         elif self.checkObstacles():
             self.__status = 'Destroyed by collision with obstacle!'
+        elif self.checkCetateni():
+            self.__status = 'A cetatean has slingshot your ass!'
         else:
             self.done = False
 
