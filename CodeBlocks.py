@@ -151,14 +151,77 @@ class GetBestCost(MACRO):
         return "MaxPositive " + str(self.left) + " = " + \
                str(self.cost) + " if " + str(self.newcost) + " < 0, otherwise min of the two"
 
+
+class AssignCost(MACRO):
+    code = 0
+
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def expand(self):
+        AssignCost.code += 1
+        labelend = "ASSIGNCOSTEND-" + str(AssignCost.code)
+        return [
+            GetCostPointer("ptr", self.x, self.y),
+            GETPTR("cost", "ptr"),
+            IFEQ("cost", "0", labelend),
+                LETPTR("ptr", "ncost"),
+                Push("endq", self.x, self.y),
+            LABEL(labelend)
+        ]
+
+    def __str__(self):
+        return "AssignCost x: " + str(self.x) + ", y: " + str(self.y)
+
+
+class Push(MACRO):
+    def __init__(self, ptr, x, y):
+        self.ptr = ptr
+        self.x = x
+        self.y = y
+
+    def expand(self):
+        return [
+            COMMENT(str(self)),
+            LETPTR(self.ptr, self.x),
+            INC(self.ptr, "1"),
+            LETPTR(self.ptr, self.y),
+            INC(self.ptr, "1")
+        ]
+
+    def __str__(self):
+        return "Push in " + str(self.ptr) + " for x:" + str(self.x) + ", y:" + str(self.y)
+
+
+class Pop(MACRO):
+    def __init__(self, ptr, x, y):
+        self.ptr = ptr
+        self.x = x
+        self.y = y
+
+    def expand(self):
+        return [
+            COMMENT(str(self)),
+            GETPTR(self.x, self.ptr),
+            INC(self.ptr, "1"),
+            GETPTR(self.y, self.ptr),
+            INC(self.ptr, "1")
+        ]
+
+    def __str__(self):
+        return "Pop from " + str(self.ptr) + " in x:" + str(self.x) + ", y:" + str(self.y)
+
+
 def main():
     program = [
-        SYM("UP",        "1"),
-        SYM("RIGHT",     "2"),
-        SYM("DOWN",      "3"),
-        SYM("LEFT",      "4"),
-        SYM("HOLD",      "0"),
-        SYM("COSTS_ADR", "4000"),
+        SYM("UP",            "1"),
+        SYM("RIGHT",         "2"),
+        SYM("DOWN",          "3"),
+        SYM("LEFT",          "4"),
+        SYM("HOLD",          "0"),
+        SYM("COSTS_ADR",  "4000"),
+        SYM("QUEUE_ADR", "10000"),
 
         SYM("r",         "[1]"),
         SYM("c",         "[2]"),
@@ -183,6 +246,10 @@ def main():
         SYM("fmaxcol",   "[3013]"),
         SYM("move",      "[3014]"),
         SYM("ncost",     "[3015]"),
+        SYM("startq",    "[3016]"),
+        SYM("endq",      "[3017]"),
+        SYM("xii",      "[3018]"),
+        SYM("yii",      "[3019]"),
 
         START("INIT"),
 
@@ -226,24 +293,6 @@ def main():
             INC("i", "1"),
         IFLESS("fmaxcol", "i", "INIT LOOP MARK FENCE"),
 
-
-        LET("yi", "0"),
-        LABEL("INIT LOOP DIST COSTS Y"),
-            LET("xi", "0"),
-            LABEL("INIT LOOP DIST COSTS X"),
-                # cost = abs(tx - xi) + abs(ty - yi)
-                LETSUB("cost", "tx", "xi"),
-                ABS("cost", "cost"),
-                LETSUB("tmp", "ty", "yi"),
-                ABS("tmp", "tmp"),
-                LETADD("cost", "cost", "tmp"),
-                GetCostPointer("ptr", "xi", "yi"),
-                LETPTR("ptr", "cost"),
-                INC("xi", "1"),
-            IFLESS("maxcol", "xi", "INIT LOOP DIST COSTS X"),
-            INC("yi", "1"),
-        IFLESS("maxrow", "yi", "INIT LOOP DIST COSTS Y"),
-
         LET("i", "0"),
         LABEL("INIT LOOP OBST"),
             LETADD("ptr", "8", "i"),
@@ -258,13 +307,40 @@ def main():
             INC("i", "1"),
         IFLESS("maxobs", "i", "INIT LOOP OBST"),
 
+        LET("startq", "QUEUE_ADR"),
+        LET("endq", "QUEUE_ADR"),
+
+        Push("endq", "tx", "ty"), # Push, endq
+        GetCostPointer("ptr", "tx", "ty"),
+        LETPTR("ptr", "1"),
+        LET("i", "0"),
+        LABEL("INIT LOOP BREADTH"),
+            Pop("startq", "xi", "yi"),
+            GetCostPointer("ptr", "xi", "yi"),
+            GETPTR("cost", "ptr"),
+            LETADD("ncost", "cost", "1"),
+
+            LETADD("xii", "xi", "1"),
+            AssignCost("xii", "yi"),
+
+            LETADD("yii", "yi", "1"),
+            AssignCost("xi", "yii"),
+
+            LETADD("xii", "xi", "-1"),
+            AssignCost("xii", "yi"),
+
+            LETADD("yii", "yi", "-1"),
+            AssignCost("xi", "yii"),
+            LETSUB("tmp", "endq", "1"),
+            INC("i", "1"),
+        IFLESS("tmp", "startq", "INIT LOOP BREADTH"),
+
         LABEL ("MOVE"),
         CHANGE_START("MOVE"),
         GetCostPointer("ptr", "x", "y"),
         GETPTR("cost", "ptr"),
 
         LET("move", "0"),
-        LET("cost", "999999"),
         GetCostPointerNeighbor("tmp", "ptr", GetCostPointerNeighbor.RIGHT),
         GETPTR("ncost", "tmp"),
         GetBestCost("ncost", "cost", "ncost"),
@@ -293,34 +369,29 @@ def main():
         GETPTR("ncost", "tmp"),
         GetBestCost("ncost", "cost", "ncost"),
         IFLESS("ncost", "cost", "MAKE MOVE"),
-            LET("cost", "ncost"),
             LET("move", "1"),
 
         LABEL("MAKE MOVE"),
-        IFLESS("0", "move", "MOVE AND HALT"),
-            GETPTR("cost", "ptr"),
-            INC("cost", "5"),
-            LETPTR("ptr", "cost"),
-        LABEL("MOVE AND HALT"),
         MOVE_HLT("move"),
     ]
 
     asm = DroneAssembler(program).\
         compile().\
         spit().\
-        save('/Users/rodanciv/Documents/04_gottaCircleAround_auto.txt').\
+        save('/Users/rodanciv/Documents/05_thinkAhead_auto.txt').\
         assembly
 
-    dronemem = DroneMemory('/Users/rodanciv/Documents/04_gottaCircleAround.txt')
+    dronemem = DroneMemory('/Users/rodanciv/Documents/05_thinkAhead.txt')
     sim = DroneSimulator(asm)
     while not sim.done:
         sim.memupdate(dronemem.memory)
         sim.step()
         print "x: " + str(sim.drone_x) + ", y: " + str(sim.drone_y)
-#        dronemem.refresh()
+        dronemem.refresh()
 
     print sim.status
-    print "score: " + str(sim.getscore(4))
+    dronemem.dumpMemoryMatrix(4000 + dronemem.memory[1] + 2, dronemem.memory[1] + 2, dronemem.memory[2] + 2)
+    print "score: " + str(sim.getscore(5))
 
 
 if __name__ == "__main__":
