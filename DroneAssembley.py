@@ -37,6 +37,22 @@ class START(MACRO):
     def __str__(self):
         return "START"
 
+
+class JMP(MACRO):
+    def __init__(self, label):
+        self.label = label
+
+    def expand(self):
+        return [
+            COMMENT(str(self)),
+            LDA("0"),
+            JGE(self.label),
+        ]
+
+    def __str__(self):
+        return "JUMP TO: " + self.label
+
+
 class CHANGE_START(MACRO):
     def __init__(self, start):
         self.startLabel = start
@@ -105,6 +121,39 @@ class IFEQ(MACRO):
 
     def __str__(self):
         return "if " + self.a + " = " + self.b + " (else jump to: " + self.jmp + ")"
+
+
+class IFNEQ(MACRO):
+    code = 0
+    def __init__(self, a, b, jmp):
+        self.a = a
+        self.b = b
+        self.jmp = jmp
+
+    def expand(self):
+        IFNEQ.code += 1
+        LabelAGEB = "AGEBDIF-" + str(IFEQ.code)
+        LabelDiff = "DIFF-" + str(IFEQ.code)
+        return [
+            COMMENT(str(self)),
+            LDA(self.a),
+            SUBA(self.b),
+            JGE(LabelAGEB),
+
+            LDA("0"),
+            JGE(LabelDiff),
+
+            LABEL(LabelAGEB),
+            LDA(self.b),
+            SUBA(self.a),
+            JGE(self.jmp),
+
+            LABEL(LabelDiff),
+            COMMENT("then:")
+        ]
+
+    def __str__(self):
+        return "if " + self.a + " != " + self.b + " (else jump to: " + self.jmp + ")"
 
 
 class MOVE_HLT(MACRO):
@@ -253,6 +302,7 @@ class Instruction:
         self.param = str(param)
         self.humanparam = self.param
         self.name = name
+        self.macro = None
 
     def __str__(self):
         return self.name + ' ' + str(self.param)
@@ -291,7 +341,6 @@ class JGE(Instruction):
 class HLT(Instruction):
     def __init__(self, ):
         Instruction.__init__(self, 'HLT', '')
-
 
 class DroneAssembler:
     program = []
@@ -358,16 +407,17 @@ class DroneAssembler:
         return expanded
 
     def __resolveJumps(self):
-        label = None
+        acclabels = []
         labels = {}
         for line in self.program:
             if isinstance(line, LABEL):
-                label = line
+                acclabels.append(line)
             elif isinstance(line, Instruction):
-                if label is not None:
-                    label.lineno = line.lineno
-                    labels[label.label] = label.lineno
-                    label = None
+                if len(acclabels) > 0:
+                    for label in acclabels:
+                        label.lineno = line.lineno
+                        labels[label.label] = label.lineno
+                    acclabels = []
         for line in self.program:
             if isinstance(line, Instruction) and line.param in labels:
                 line.param = labels[line.param]

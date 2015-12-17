@@ -60,6 +60,7 @@ class DroneMemory:
         self.cetidx = 0
         self.map = []
         self.loadmap(mapfile)
+        self.step = 0
 
     def loadmap(self, mapfile):
         self.map = json.load(open(mapfile, "r"))
@@ -80,7 +81,7 @@ class DroneMemory:
                 idx += 2
         self.cetidx = idx
         self.cetateni = [item for item in self.map['map']['objects'] if item['type'] == 'Cetatean']
-        self.drone = [item for item in self.map['map']['objects'] if item['type'] == 'Drone']
+        self.drone = [item for item in self.map['map']['objects'] if item['type'] == 'Drone'] + [self.map['simulatedDrone']]
 
         self.update_toti_dusmanii()
 
@@ -90,6 +91,13 @@ class DroneMemory:
         idx = self.update_inamici(idx, self.drone)
 
     def refresh(self):
+        self.step += 1
+        if 'steps' in self.map and \
+           self.step in [item['stepNumber'] for item in self.map['steps']]:
+            crtstep = next(item for item in self.map['steps'] if item['stepNumber'] == self.step)
+            self.cetateni = self.cetateni + [item for item in crtstep['objects'] if item['type'] == 'Cetatean']
+
+        toremove = []
         for cetatean in self.cetateni:
             x = cetatean['position']['x']
             y = cetatean['position']['y']
@@ -105,7 +113,9 @@ class DroneMemory:
                cetatean['position']['y'] < 0 or \
                cetatean['position']['x'] >= self.memory[self.COLS] or \
                cetatean['position']['y'] >= self.memory[self.ROWS]:
-                self.cetateni = [item for item in self.cetateni if item != cetatean]
+                toremove.append(cetatean)
+
+        self.cetateni = [item for item in self.cetateni if item not in toremove]
 
         self.update_toti_dusmanii()
 
@@ -114,8 +124,12 @@ class DroneMemory:
         self.memory[idx] = len(inamici)
         idx += 1
         for object in inamici:
-            self.memory[idx] = int(object['position']['x'])
-            self.memory[idx + 1] = int(object['position']['y'])
+            if object['identifier'] == '@':
+                self.memory[idx] = self.memory[DroneMemory.DX]
+                self.memory[idx + 1] = self.memory[DroneMemory.DY]
+            else:
+                self.memory[idx] = int(object['position']['x'])
+                self.memory[idx + 1] = int(object['position']['y'])
             idx += 2
         return idx
 
@@ -127,7 +141,12 @@ class DroneMemory:
         for y in range(0, rows):
             line = ''
             for x in range(0, cols):
-                line += '{0:>3}'.format(str(self.memory[start + y * cols + x]))
+                if (x - 1) == self.memory[DroneMemory.DX] and \
+                   (y - 1) == self.memory[DroneMemory.DY]:
+                    chdisp = '@@'
+                else:
+                    chdisp = str(self.memory[start + y * cols + x])
+                line += '{0:>3}'.format(chdisp)
             print line
 
 
@@ -206,7 +225,7 @@ class DroneSimulator:
         self.moves += 1
         next = self.sim(self.asm[0])
         while next > -1:
-            if next == 390: # crude breakpoint method: change the number and ste a breakpoint to 'pass'
+            if next == 380: # crude breakpoint method: change the number and ste a breakpoint to 'pass'
                 pass
             next = self.sim(self.asm[next])
 
@@ -227,13 +246,15 @@ class DroneSimulator:
     def sim(self, instr):
         self.CPU += 1
         #self.tracepresim(instr)
-        return getattr(self, "sim" + instr.name)(instr)
+        retval = getattr(self, "sim" + instr.name)(instr)
+        #self.tracepresim(instr)
+        return retval
 
     def tracepresim(self, instr):
-        around = 2
+        around = 0
         first = max(0, instr.lineno - around)
         last = min(len(self.asm) - 1, instr.lineno + around)
-        print '\n\n'
+        #print '\n'
         for i in range(first, last + 1):
             pointer = ' '
             dbgins = self.asm[i]
@@ -248,11 +269,23 @@ class DroneSimulator:
     def address(self, param):
         return int(param[1:-1])
 
+    def setmemval(self, addr, val):
+        if addr < 0:
+            raise ValueError("Invalid set from addr + [" + str(addr) + "]")
+        else:
+            self.memory[addr] = val
+
+    def getmemval(self, addr):
+        if addr < 0:
+            raise ValueError("Invalid get from addr + [" + str(addr) + "]")
+        else:
+            return self.memory[addr]
+
     def value(self, param):
         if param == '[N]':
-            return self.memory[self.regN]
+            return self.getmemval(self.regN)
         elif isinstance(param, str) and len(param) > 0 and param[0] == '[':
-            return self.memory[self.address(param)]
+            return self.getmemval(self.address(param))
         else:
             try:
                 return int(param)
@@ -265,9 +298,9 @@ class DroneSimulator:
 
     def simSTA(self, instr):
         if instr.param == '[N]':
-            self.memory[self.regN] = self.regA
+            self.setmemval(self.regN, self.regA)
         else:
-            self.memory[self.address(instr.param)] = self.regA
+            self.setmemval(self.address(instr.param), self.regA)
         return instr.lineno + 1
 
     def simLDN(self, instr):
